@@ -2,7 +2,7 @@
 
 import httplib2, urllib, re, json, os, urllib.request, sys
 
-http = httplib2.Http()
+http = httplib2.Http(ca_certs='/etc/ssl/certs/ca-certificates.crt')
 #httplib2.debuglevel=4
 encoding = "windows-1252"
 
@@ -99,10 +99,17 @@ for hit in hits:
         user_stack_url = deviations_user_url_begin + hit['whoid'] + deviations_user_url_end
         resp, content = http.request(user_stack_url, 'GET', headers=headers)
         user_stack = content.decode(encoding)
+        #print()
+        #print(user_stack)
+        #print()
         stack_dec = json.loads(user_stack)
         hits2 = stack_dec['DiFi']['response']['calls'][0]['response']['content'][0]['result']['hits']
         for hit2 in hits2:
-            images.append(parse_hugeview(hit2))
+            try:
+                images.append(parse_hugeview(hit2))
+            except:
+                print('Error with: ', hit2)
+
 
 download_images(images, 'deviations')
 

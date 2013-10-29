@@ -62,22 +62,42 @@ deviations_user_url_end = '"]&t=json'
 #encoding = "utf-8"
 folder = "deviations"
 
-login_data = 'username=' + username + '&password=' + password + '&remember_me=1'
-headers = {'Content-type': 'application/x-www-form-urlencoded'}
 
 print("Logging in...")
-resp, content = http.request(url, "POST", headers=headers, body=login_data)
+resp, content = http.request(url)
+userinfo = resp['set-cookie'].split(";")[0]
+#print(userinfo)
+content_dec = content.decode(encoding)
+validate_token = re.findall('(?<=name="validate_token" value=")[^ ]*(?=")' , content_dec)[0]
+validate_key = re.findall('(?<=name="validate_key" value=")[^ ]*(?=")' , content_dec)[0]
+#print(validate_token)
+#print(validate_key)
 
+login_data = 'username=' + username + '&password=' + password + '&remember_me=1' + '&validate_token=' + validate_token + '&validate_key=' + validate_key
+headers = {'Content-type': 'application/x-www-form-urlencoded', 'Cookie': userinfo}
+
+resp, content = http.request(url, "POST", headers=headers, body=login_data)
+#print(headers)
+#print(login_data)
+#print("\n=== Many parameters should be here ===\n")
+#print(resp)
+
+#print(resp.getheaders())
+
+#print(headers)
 headers = {'Cookie': resp['set-cookie']}
+#print(headers)
 
 # httplib will merge all the "Cookie" fields separating them with ", " ... That's not good!
 headers['Cookie'] = headers['Cookie'].replace(", ", "; ")
 
 print("Retrieving deviatons pages...")
 resp, content = http.request(deviations_url, 'GET', headers=headers)
+#print(resp)
 deviations = content.decode(encoding)
 
 dev_dec = json.loads(deviations)
+print(dev_dec)
 hits = dev_dec['DiFi']['response']['calls'][0]['response']['content'][0]['result']['hits']
 
 n_deviations = 0
@@ -111,6 +131,6 @@ for hit in hits:
                 print('Error with: ', hit2)
 
 
-download_images(images, 'deviations')
+download_images(images, folder)
 
 #save(deviations)

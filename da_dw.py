@@ -4,7 +4,7 @@ import httplib2, urllib, re, json, os, urllib.request, sys
 
 http = httplib2.Http(ca_certs='/etc/ssl/certs/ca-certificates.crt')
 #httplib2.debuglevel=4
-encoding = "windows-1252"
+encoding = "UTF-8" #"windows-1252"
 
 # Auxiliar function
 def save(line):

@@ -24,25 +24,31 @@ def download_images(images, path):
 
 def parse_hugeview(hit):
         hugeview = hit['hugeview']
-        img_urls = re.findall('(?<=-img=")[^ ]*://fc[^ ]*(?=")', hugeview)
+        img_urls = re.findall('(?<=-img=")[^ ]*://[^ ]*(?=")', hugeview)
         if len(img_urls) > 0:
             img_url = img_urls[0]
         else:
-            thumb = re.findall('(?<=src=")[^ ]*://fc[^ ]*(?=")', hugeview)
+            thumb = re.findall('(?<=src=")[^ ]*://[^ ]*(?=")', hugeview)
             if len(thumb) < 1:
                 href = re.findall('(?<=href=")[^ ]*(?=")', hugeview)[0]
                 print("This is not an image: " + href)
-                return  re.findall('(?<=src=")[^ ]*(?=")', hugeview)[0]
+                img_url = re.findall('(?<=src=")[^ ]*(?=")', hugeview)[0]
+                print("Found: " + img_url)
+                return img_url
             image_name = thumb[0].split("/")[-1]
             # When the thumbnail doesn't correspond to the actual image
             resp, content = http.request(hit['url'], 'GET')
             image_page = content.decode(encoding)
-            img_urls = re.findall('(?<=src=")[^ ]*://fc[^ ]*(?=")', image_page)
+            img_urls = re.findall('(?<=src=")[^ ]*://orig[^ ]*(?=")', image_page)
+            #print("\tFound these image urls:")
+            #for img in img_urls:
+            #    print(img)
+            img_url = ''
             for img in img_urls:
                 if thumb != img:
                     img_url = img
+                    print(">>>\tTaking " + img_url)
                     break
-            img_url = ''
         return img_url
 
 if len(sys.argv) < 3:
@@ -97,7 +103,7 @@ resp, content = http.request(deviations_url, 'GET', headers=headers)
 deviations = content.decode(encoding)
 
 dev_dec = json.loads(deviations)
-print(dev_dec)
+#print(dev_dec)
 hits = dev_dec['DiFi']['response']['calls'][0]['response']['content'][0]['result']['hits']
 
 n_deviations = 0

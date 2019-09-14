@@ -1,142 +1,133 @@
-#! /usr/bin/python3
+#!/usr/bin/env python3
 
-import httplib2, urllib, re, json, os, urllib.request, sys
+import sys
+import os
+import re
+import requests
+import urllib
 
-http = httplib2.Http(ca_certs='/etc/ssl/certs/ca-certificates.crt')
-#httplib2.debuglevel=4
-encoding = "UTF-8" #"windows-1252"
+URL_DA = 'https://www.deviantart.com'
+URL_LOGIN = f'{URL_DA}/users/login'
+URL_SIGNIN = f'{URL_DA}/_sisu/do/signin'
+URL_DEVIATIONS = f'{URL_DA}/notifications/watch/deviations'
+URL_WATCH = f'{URL_DA}/_napi/da-messagecentre/api/watch'
 
-# Auxiliar function
-def save(line):
-    f = open('test.html', 'w')
-    f.write(line)
-    f.close()
+USER_AGENT = 'Mozilla/5.0 (X11; Linux x86_64; rv:68.0) Gecko/20100101 Firefox/68.0'
 
-def download_images(images, path):
-    for im in images:
-        #print(im)
-        filename = im.split("/")[-1]
-        filename = os.path.join(path,filename)
-        try:
-            urllib.request.urlretrieve(im, filename)
-        except:
-            print("Failed to download "+im)
-
-def parse_hugeview(hit):
-        hugeview = hit['hugeview']
-        img_urls = re.findall('(?<=-img=")[^ ]*://[^ ]*(?=")', hugeview)
-        if len(img_urls) > 0:
-            img_url = img_urls[0]
-        else:
-            thumb = re.findall('(?<=src=")[^ ]*://[^ ]*(?=")', hugeview)
-            if len(thumb) < 1:
-                href = re.findall('(?<=href=")[^ ]*(?=")', hugeview)[0]
-                print("This is not an image: " + href)
-                img_url = re.findall('(?<=src=")[^ ]*(?=")', hugeview)[0]
-                print("Found: " + img_url)
-                return img_url
-            image_name = thumb[0].split("/")[-1]
-            # When the thumbnail doesn't correspond to the actual image
-            resp, content = http.request(hit['url'], 'GET')
-            image_page = content.decode(encoding)
-            img_urls = re.findall('(?<=src=")[^ ]*://orig[^ ]*(?=")', image_page)
-            #print("\tFound these image urls:")
-            #for img in img_urls:
-            #    print(img)
-            img_url = ''
-            for img in img_urls:
-                if thumb != img:
-                    img_url = img
-                    print(">>>\tTaking " + img_url)
-                    break
-        return img_url
-
-if len(sys.argv) < 3:
-    print("Usage: " + sys.argv[0] + " username password")
-    sys.exit()
+def filename_safe(filename):
+    return re.sub(r'[^\w\d-]', '_', filename)
 
 username = sys.argv[1]
 password = sys.argv[2]
+_px = None
+if len(sys.argv) == 4:
+    _px = sys.argv[3]
+    #_px = urllib.parse.quote_plus(_px)
 
-url = "https://www.deviantart.com/users/login"
-# This url will give us a pretty json with all the information of new deviations
-deviations_url = "http://www.deviantart.com/global/difi/?c%5B%5D=%22MessageCenter%22%2C%22get_views%22%2C%5B%224529392%22%2C%22oq%3Adevwatch%3A0%3A100%3Af%3Atg%3Ddeviations%2Cgroup%3Dsender%22%5D&t=json"
-#deviations_user_url_begin = "http://www.deviantart.com/global/difi/?c%5B%5D=%22MessageCenter%22%2C%22get_views%22%2C%5B%224529392%22%2C%22oq%3Adevwatch%3A0%3A48%3Af%3Atg%3Ddeviations%2Csender%3D"
-#deviations_user_url_end = "%22%5D&t=json"
-deviations_user_url_begin = 'http://www.deviantart.com/global/difi/?c[]="MessageCenter","get_views",["4529392","oq:devwatch:0:48:f:tg=deviations,sender='
-deviations_user_url_end = '"]&t=json'
-#encoding = "utf-8"
-folder = "deviations"
+### Create deviations folder
+FOLDER_DA = 'deviations'
+os.makedirs(FOLDER_DA, exist_ok=True)
 
+### Get initial cookie and csrf_token
+headers = {'User-Agent': USER_AGENT}
+if _px:
+    headers['Cookie'] = f'_px={_px}'
+r = requests.get(URL_LOGIN, headers=headers)
+set_cookie = r.headers['set-cookie']
+print('set-cookie', set_cookie)
+match = re.search('(userinfo=)([^ ;]*)', set_cookie)
+if not match:
+    print('Something went wrong :(')
+    print('html:', r.text)
+    print('headers:', r.headers)
+    sys.exit(1)
+userinfo = match.group(2)
+html = r.text
+# print('html', html)
+match = re.search('(<input type=\"hidden\" name=\"csrf_token\" value=\")([^ ]*)(\"\/)', html)
+csrf_token = match.group(2)
+print('csrf_token', csrf_token)
 
-print("Logging in...")
-resp, content = http.request(url)
-userinfo = resp['set-cookie'].split(";")[0]
-#print(userinfo)
-content_dec = content.decode(encoding)
-validate_token = re.findall('(?<=name="validate_token" value=")[^ ]*(?=")' , content_dec)[0]
-validate_key = re.findall('(?<=name="validate_key" value=")[^ ]*(?=")' , content_dec)[0]
-#print(validate_token)
-#print(validate_key)
+### Sign In
+headers = {'User-Agent': USER_AGENT, 'Cookie': f'userinfo={userinfo}; _px={_px}', 'Referer': URL_LOGIN}
+data = {'referer': URL_DA, 'csrf_token': csrf_token, 'challenge': '0', 'username': username, 'password': password}
+r = requests.post(URL_SIGNIN, headers=headers, data=data, allow_redirects=False)
+html = r.text
+# print('html', html)
+# print('headers', r.headers)
+set_cookie = r.headers['Set-Cookie']
+print('set-cookie', set_cookie)
+match = re.search('(userinfo=)([^ ;]*)', set_cookie)
+userinfo = match.group(2)
+match = re.search('(auth=)([^ ;]*)', set_cookie)
+auth = match.group(2)
+match = re.search('(auth_secure=)([^ ;]*)', set_cookie)
+auth_secure = match.group(2)
 
-login_data = 'username=' + username + '&password=' + password + '&remember_me=1' + '&validate_token=' + validate_token + '&validate_key=' + validate_key
-headers = {'Content-type': 'application/x-www-form-urlencoded', 'Cookie': userinfo}
+### Watch
+headers['Referer'] = URL_DEVIATIONS
+headers['Cookie'] = f'userinfo={userinfo}; _px={_px}; auth={auth}; auth_secure={auth_secure}'
+ # watch?limit=24&messagetype=deviations&stacked=true&cursor=YTM1ZjQxOGQ9MjQ'
+cursor = None
+total = None
+while True:
+    params = {'limit': '24', 'messagetype': 'deviations', 'stacked': 'false'}
+    if cursor:
+        params['cursor'] = cursor
+    r = requests.get(URL_WATCH, headers=headers, params=params)
+    try:
+        j = r.json()
+    except:
+        print('Something went wrong :(')
+        print('html:', r.text)
+        sys.exit(1)
+    if not cursor:
+        total = j['counts']['total']
+        print(f'Total deviations: {total}')
+    for result in j['results']:
+        deviation = result['deviation']
+        url = deviation['url']
+        title = deviation['title']
+        author = deviation['author']['username']
+        deviation_id = deviation['deviationId']
+        print(f'- {title} ({deviation_id}) by {author}: {url}')
+        try:
+            file_url = deviation['files'][8]['src']
+        except:
+            print('No fullview file found for deviation')
+            continue
+        try:
+            r = requests.get(file_url, headers={'User-Agent': USER_AGENT})
+        except KeyboardInterrupt:
+            sys.exit(1)
+        except:
+            print('Error downloading deviation fullview file')
+            continue
+        content_type = r.headers['content-type']
+        ext = None
+        if content_type == 'image/jpeg':
+            ext = 'jpg'
+        elif content_type == 'image/png':
+            ext = 'png'
+        elif content_type == 'image/gif':
+            ext = 'png'
+        elif content_type == 'video/mp4':
+            ext = 'mp4'
+        else:
+            print(f'Unexpected content-type: {content_type}')
+            sys.exit(1)
+        filename = f'{title}_{deviation_id}_by_{author}'.lower()
+        filename = filename_safe(filename)
+        filename = f'{filename}.{ext}'
+        file_path = f'{FOLDER_DA}/{filename}'
+        if os.path.isfile(file_path):
+            print(f'File {file_path} already exists!')
+            sys.exit(1)
+        with open(file_path, 'w+b') as f:
+            f.write(r.content)
 
-resp, content = http.request(url, "POST", headers=headers, body=login_data)
-#print(headers)
-#print(login_data)
-#print("\n=== Many parameters should be here ===\n")
-#print(resp)
-
-#print(resp.getheaders())
-
-#print(headers)
-headers = {'Cookie': resp['set-cookie']}
-#print(headers)
-
-# httplib will merge all the "Cookie" fields separating them with ", " ... That's not good!
-headers['Cookie'] = headers['Cookie'].replace(", ", "; ")
-
-print("Retrieving deviatons pages...")
-resp, content = http.request(deviations_url, 'GET', headers=headers)
-#print(resp)
-deviations = content.decode(encoding)
-
-dev_dec = json.loads(deviations)
-#print(dev_dec)
-hits = dev_dec['DiFi']['response']['calls'][0]['response']['content'][0]['result']['hits']
-
-n_deviations = 0
-for hit in hits:
-    n_deviations = n_deviations + int(hit['stack_count'])
-
-print("You have " + str(n_deviations) + " new deviations from " + str(len(hits)) + " users")
-
-#exit()
-
-print("Downloading deviations...")
-# Iterate on users with new deviations
-images = []
-for hit in hits:
-    # Check if there is one or more deviation for that user
-    if hit['stack_count'] == '1':
-        images.append(parse_hugeview(hit))
+    if j['hasMore']:
+        cursor = j['cursor']
     else:
-        user_stack_url = deviations_user_url_begin + hit['whoid'] + deviations_user_url_end
-        resp, content = http.request(user_stack_url, 'GET', headers=headers)
-        user_stack = content.decode(encoding)
-        #print()
-        #print(user_stack)
-        #print()
-        stack_dec = json.loads(user_stack)
-        hits2 = stack_dec['DiFi']['response']['calls'][0]['response']['content'][0]['result']['hits']
-        for hit2 in hits2:
-            try:
-                images.append(parse_hugeview(hit2))
-            except:
-                print('Error with: ', hit2)
+        break
 
-
-download_images(images, folder)
-
-#save(deviations)
